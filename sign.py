@@ -44,7 +44,6 @@ class ExpGap:
                 reward_sum += sim.sim()
             mean = reward_sum / t_r
 
-            print("mean=" + str(mean) + ", eps_r = " + str(eps_r) + ", delta_r = " + str(delta_r) + ", t_r = " + str(t_r))
             if mean > eps_r:
                 return True
             elif mean < -eps_r:
@@ -52,21 +51,31 @@ class ExpGap:
             r += 1.0
 
 class LILTest:
-    def __init__(self):
-        pass
+    def __init__(self, stop_interval=1):
+        self.stop_interval = stop_interval
 
     def run(self, sim, delta):
-        a = 0.6
-        c = 1.1
-        b = (math.log(zeta(2 * a / c, 1)) - math.log(delta)) * c / 2
-        print(a, b, c)
-
+        if self.stop_interval == 1:
+            a = 0.6
+            c = 1.1
+            b = (math.log(zeta(2 * a / c, 1)) - math.log(delta)) * c / 2
+            #print(a, b, c)
+        else:
+            a = 0.6
+            b = (math.log(zeta(2 * a, 1)) - math.log(delta)) / 2
+            c = self.stop_interval
+        next_stop = 1
         sum = 0.0
         n = 0.0
         while True:
             sum += sim.sim()
             n += 1.0
             boundary = math.sqrt(a * n * math.log(math.log(n, c) + 1) + b * n)
+            if self.stop_interval != 1:
+                if n < next_stop:
+                    continue
+                while next_stop < n + 1:
+                    next_stop *= c
             if sum >= boundary:
                 return True
             elif sum <= -boundary:
@@ -84,9 +93,11 @@ class TestBench:
         majority_sample = np.zeros(mean_range)
         for mean_index in range(0, mean_range):
             mean = math.exp(-0.2 * mean_index)
-            print("Testing on Bernoulli: mean = " + str(mean))
+            print("Testing on Bernoulli: mean = " + str(mean)),
             correct_count = 0
             sample_count = np.zeros(self.test_size)
+
+            print_time = time.time()
             for iter in range(0, self.test_size):
                 if random.random() > 0.5:
                     mean = -mean
@@ -95,12 +106,39 @@ class TestBench:
                 if (result is True and mean > 0) or (result is False and mean < 0):
                     correct_count += 1
                 sample_count[iter] = sim.finish()
+                if time.time() - print_time > 1:
+                    print(iter),
+                    print_time = time.time()
 
             mean_array[mean_index] = math.fabs(mean)
             accuracy[mean_index] = float(correct_count) / self.test_size
             average_sample[mean_index] = np.sum(sample_count) / self.test_size
             majority_sample[mean_index] = np.sort(sample_count)[int(self.test_size * 0.9)]
+            print()
         return mean_array, accuracy, average_sample, majority_sample
+
+    def compare_and_plot(self, agents, labels):
+        color_list = ['r', 'g', 'b', 'c']
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        #ax2 = ax1.twinx()
+        plt.title('Comparison of Required Sample Size')
+
+        counter = 0
+        lns = []
+        for agent in agents:
+            mean, accuracy, average_sample, majority_sample = self.test(agent)
+            lns += ax1.plot(mean, average_sample, c=color_list[counter], label=labels[counter])
+            counter += 1
+        ax1.set_xlim((min(mean), max(mean)))
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
+        ax1.set_xlabel('mean')
+        ax1.set_ylabel('samples')
+
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='lower right')
+        plt.show()
 
     def test_and_plot(self, agent):
         mean, accuracy, average_sample, majority_sample = self.test(agent)
@@ -161,10 +199,16 @@ if __name__ == '__main__':
     lil_agent.run(sim, 0.05)
     print(sim.finish())
 
+    lil_agent2 = LILTest(stop_interval=1.1)
+    lil_agent2.run(sim, 0.05)
+    print(sim.finish())
+
     sl_agent = SimulationLemma()
     sl_agent.run(sim, 0.05)
     print(sim.finish())
 
-    #test = TestBench(200)
-    #test.test_and_plot(lil_agent)
+    test = TestBench(2)
+    #test.test_and_plot(exp_gap_agent)
+
+    test.compare_and_plot([lil_agent, sl_agent, exp_gap_agent], ['LIL_RW', 'Exponential Gap', 'Simulation Lemma'])
 
