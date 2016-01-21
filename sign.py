@@ -128,17 +128,43 @@ class TestBench:
 
         return mean, accuracy, average_sample, majority_sample
 
+class SimulationLemma:
+    def __init__(self):
+        pass
+
+    def run(self, sim, delta):
+        k = 1.0
+        c = 2 / delta + 1
+        while True:
+            gamma = math.exp(-k)
+            n = 16 / gamma / gamma * math.log(k + c)
+
+            reward_sum = 0.0
+            for i in range(0, int(round(n))):
+                reward_sum += sim.sim()
+            mean = reward_sum / n
+
+            if mean > gamma / 2:
+                return True
+            elif mean < -gamma / 2:
+                return False
+
+            k += 1.0
 
 if __name__ == '__main__':
     sim = Simulator(kind='bernoulli', mean=-0.1)
     exp_gap_agent = ExpGap()
-    exp_gap_agent.run(sim, 0.1)
+    exp_gap_agent.run(sim, 0.05)
     print(sim.finish())
 
     lil_agent = LILTest()
-    lil_agent.run(sim, 0.1)
+    lil_agent.run(sim, 0.05)
     print(sim.finish())
 
-    test = TestBench(200)
-    test.test_and_plot(lil_agent)
+    sl_agent = SimulationLemma()
+    sl_agent.run(sim, 0.05)
+    print(sim.finish())
+
+    #test = TestBench(200)
+    #test.test_and_plot(lil_agent)
 
