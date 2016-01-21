@@ -47,7 +47,7 @@ class ExpGap:
                 return False
             r += 1.0
 
-class LilTest:
+class LILTest:
     def __init__(self):
         pass
 
@@ -75,3 +75,8 @@ if __name__ == '__main__':
     sim = Simulator(kind='bernoulli', mean=-0.1)
     exp_gap_agent = ExpGap()
     exp_gap_agent.run(sim, 0.1)
+    print(sim.finish())
+
+    lil_agent = LILTest()
+    lil_agent.run(sim, 0.1)
+    print(sim.finish())
