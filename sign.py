@@ -102,6 +102,33 @@ class TestBench:
             majority_sample[mean_index] = np.sort(sample_count)[int(self.test_size * 0.9)]
         return mean_array, accuracy, average_sample, majority_sample
 
+    def test_and_plot(self, agent):
+        mean, accuracy, average_sample, majority_sample = self.test(agent)
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        ax2 = ax1.twinx()
+        plt.title('Accuracy and Required Samples vs. Mean')
+        lns1 = ax1.scatter(mean, accuracy, c='r', label='accuracy')
+        lns2 = ax2.plot(mean, average_sample, c='g', label='average sample usage')
+        lns3 = ax2.plot(mean, majority_sample, c='b', label='top 10% sample usage')
+        ax2.set_yscale('log')
+        ax1.set_xscale('log')
+        ax2.set_xscale('log')
+        ax1.set_ylim((0.8, 1.05))
+        ax1.set_xlim((0.01, 1))
+        ax2.set_xlim((0.01, 1))
+        ax1.set_xlabel('mean')
+        ax1.set_ylabel('accuracy')
+        ax2.set_ylabel('samples used')
+        lns = [lns1] + lns2 + lns3
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='lower right')
+        plt.show()
+
+        return mean, accuracy, average_sample, majority_sample
+
+
 if __name__ == '__main__':
     sim = Simulator(kind='bernoulli', mean=-0.1)
     exp_gap_agent = ExpGap()
@@ -113,25 +140,5 @@ if __name__ == '__main__':
     print(sim.finish())
 
     test = TestBench(200)
-    mean, accuracy, average_sample, majority_sample = test.test(lil_agent)
-
-    fig = plt.figure()
-    ax1 = fig.add_subplot(111)
-    ax2 = ax1.twinx()
-    plt.title('Accuracy and Required Samples vs. Mean')
-    lns1 = ax1.scatter(mean, accuracy, c='r', label='accuracy')
-    lns2 = ax2.plot(mean, average_sample, c='g', label='average sample usage')
-    lns3 = ax2.plot(mean, majority_sample, c='b', label='top 10% sample usage')
-    ax2.set_yscale('log')
-    ax1.set_xscale('log')
-    ax2.set_xscale('log')
-    ax1.set_xlim((0.01, 1))
-    ax2.set_xlim((0.01, 1))
-    ax1.set_xlabel('mean')
-    ax1.set_ylabel('accuracy')
-    ax2.set_ylabel('samples used')
-    lns = [lns1] + lns2 + lns3
-    labs = [l.get_label() for l in lns]
-    plt.legend(lns, labs, loc='lower right')
-    plt.show()
+    test.test_and_plot(lil_agent)
 
