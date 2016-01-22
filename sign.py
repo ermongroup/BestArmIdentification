@@ -51,19 +51,28 @@ class ExpGap:
             r += 1.0
 
 class LILTest:
-    def __init__(self, stop_interval=1):
+    def __init__(self, stop_interval=1, a=0.6, c=1.1, b=None):
         self.stop_interval = stop_interval
+        self.a = a
+        self.c = c
+        self.b = b
 
     def run(self, sim, delta):
         if self.stop_interval == 1:
-            a = 0.6
-            c = 1.1
-            b = (math.log(zeta(2 * a / c, 1)) - math.log(delta)) * c / 2
-            #print(a, b, c)
+            a = self.a
+            c = self.c
+            if self.b is None:
+                b = (math.log(zeta(2 * a / c, 1)) - math.log(delta)) * c / 2
+            else:
+                b = self.b
         else:
-            a = 0.6
-            b = (math.log(zeta(2 * a, 1)) - math.log(delta)) / 2
+            a = self.a
             c = self.stop_interval
+            if self.b is None:
+                b = (math.log(zeta(2 * a, 1)) - math.log(delta)) / 2
+            else:
+                b = self.b
+
         next_stop = 1
         sum = 0.0
         n = 0.0
@@ -114,30 +123,39 @@ class TestBench:
             accuracy[mean_index] = float(correct_count) / self.test_size
             average_sample[mean_index] = np.sum(sample_count) / self.test_size
             majority_sample[mean_index] = np.sort(sample_count)[int(self.test_size * 0.9)]
-            print()
+            print("")
         return mean_array, accuracy, average_sample, majority_sample
 
-    def compare_and_plot(self, agents, labels):
-        color_list = ['r', 'g', 'b', 'c']
+    def compare_and_plot(self, agents, labels, param_list):
+        color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
         fig = plt.figure()
         ax1 = fig.add_subplot(111)
-        #ax2 = ax1.twinx()
-        plt.title('Comparison of Required Sample Size')
+        ax2 = ax1.twinx()
+        plt.hold(True)
+        #plt.title('Comparison of Required Sample Size')
 
         counter = 0
         lns = []
         for agent in agents:
             mean, accuracy, average_sample, majority_sample = self.test(agent)
-            lns += ax1.plot(mean, average_sample, c=color_list[counter], label=labels[counter])
+            print(param_list[counter], labels[counter])
+            for param, label in zip(param_list[counter], labels[counter]):
+                print (param, label)
+                if param == 'sample_average':
+                    lns += ax2.plot(mean, average_sample, c=color_list[counter], label=label)
+                elif param == 'accuracy':
+                    lns.append(ax1.scatter(mean, accuracy, c=color_list[counter], label=label))
             counter += 1
         ax1.set_xlim((min(mean), max(mean)))
         ax1.set_xscale('log')
-        ax1.set_yscale('log')
+        ax2.set_xscale('log')
+        ax2.set_yscale('log')
         ax1.set_xlabel('mean')
-        ax1.set_ylabel('samples')
+        ax1.set_ylabel('accuracy')
+        ax2.set_ylabel('number of samples')
 
         labs = [l.get_label() for l in lns]
-        plt.legend(lns, labs, loc='lower right')
+        plt.legend(lns, labs, loc='upper right')
         plt.show()
 
     def test_and_plot(self, agent):
@@ -146,7 +164,7 @@ class TestBench:
         fig = plt.figure()
         ax1 = fig.add_subplot(111)
         ax2 = ax1.twinx()
-        plt.title('Accuracy and Required Samples vs. Mean')
+
         lns1 = ax1.scatter(mean, accuracy, c='r', label='accuracy')
         lns2 = ax2.plot(mean, average_sample, c='g', label='average sample usage')
         lns3 = ax2.plot(mean, majority_sample, c='b', label='top 10% sample usage')
@@ -207,8 +225,20 @@ if __name__ == '__main__':
     sl_agent.run(sim, 0.05)
     print(sim.finish())
 
-    test = TestBench(2)
+    test = TestBench(10)
     #test.test_and_plot(exp_gap_agent)
 
-    test.compare_and_plot([lil_agent, sl_agent, exp_gap_agent], ['LIL_RW', 'Exponential Gap', 'Simulation Lemma'])
+    #test.compare_and_plot([lil_agent, sl_agent, exp_gap_agent], ['LIL_RW', 'Exponential Gap', 'Simulation Lemma'])
+
+    agent_list = []
+    label_list = []
+    plot_param = []
+    b_list = [3.0, 0.3]
+    for b in b_list:
+        lil_agent = LILTest(b=b)
+        agent_list.append(lil_agent)
+        plot_param.append(['accuracy', 'sample_average'])
+        label_list.append(["accuracy@b=" + str(b), "average sample@b=" + str(b)])
+
+    test.compare_and_plot(agent_list, label_list, plot_param)
 
