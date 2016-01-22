@@ -41,11 +41,9 @@ class Simulator:
         plt.ioff()
         plt.show()
 
-class LILAEAgent:
+class BanditAgent:
     def __init__(self):
-        self.a = 0.8
-        self.b = 3.0
-        self.c = 1.1
+        pass
 
     def init_display(self):
         plt.ion()
@@ -54,8 +52,81 @@ class LILAEAgent:
         plt.show()
         return ax1, ax2
 
-    def run_ae(self, sim):
-        ax1, ax2 = self.init_display()
+class LILUCBAgent(BanditAgent):
+    def __init__(self):
+        BanditAgent.__init__(self)
+
+    def run(self, sim, plot=False):
+        beta = 1
+        alpha = 9
+        epsilon = 0.01
+        delta = 0.0001
+
+        if plot:
+            ax1, ax2 = self.init_display()
+        mean_array = np.zeros(sim.K)
+        sample_count = np.ones(sim.K) * 3
+
+        for i in range(0, sim.K):
+            mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
+
+        counter = 0
+        finish = False
+        while not finish:
+            explore_val = np.zeros(sim.K)
+            mean = np.zeros(sim.K)
+            for i in range(0, sim.K):
+                if sample_count[i] == 0:
+                    explore_val[i] = +100000
+                    mean = 0.0
+                else:
+                    n = sample_count[i]
+                    temp = math.log(math.log((1 + epsilon) * n) / delta)
+                    explore_val[i] = mean_array[i] / sample_count[i] + \
+                                     (1 + beta) * (1 + math.sqrt(epsilon)) * math.sqrt(2 * (1 + epsilon) * temp / n)
+                    mean[i] = mean_array[i] / sample_count[i]
+
+            cur_sample = np.argmax(explore_val)
+            mean_array[cur_sample] += sim.sim(cur_sample)
+            sample_count[cur_sample] += 1
+
+            sample_sum = np.sum(sample_count)
+
+            if plot:
+                counter += 1
+                if counter % 20 == 0:
+                    ax1.cla()
+                    ax2.cla()
+                    ax1.scatter(range(0, sim.K), explore_val, color='r')
+                    ax1.scatter(range(0, sim.K), mean, color='b')
+                    ax2.scatter(range(0, sim.K), sample_count, color='g')
+                    plt.draw()
+                    time.sleep(0.001)
+
+            for i in range(0, sim.K):
+                if sample_count[i] >= 1 + alpha * (sample_sum - sample_count[i]):
+                    return i
+
+    def ucb_risk(self, epsilon, delta):
+        rou = (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
+        return math.sqrt(rou * delta) + 4 * rou * delta / (1 - rou * delta)
+
+    def ucb_delta(self, epsilon, risk):
+        temp = risk * epsilon / 5 / (2 + epsilon)
+        return temp ** (1 / (1 + epsilon))
+
+
+
+class LILAEAgent(BanditAgent):
+    def __init__(self):
+        BanditAgent.__init__(self)
+        self.a = 0.8
+        self.b = 3.0
+        self.c = 1.1
+
+    def run(self, sim, plot=False):
+        if plot:
+            ax1, ax2 = self.init_display()
 
         index = np.zeros(sim.K)
         mean_array = np.zeros(sim.K)
@@ -93,84 +164,26 @@ class LILAEAgent:
             mean_array[cur_sample] += sim.sim(index[cur_sample])
             sample_count[cur_sample] += 1
 
-            counter += 1
-            if counter % 500 == 0:
-                ax1.cla()
-                ax2.cla()
-                ax1.scatter(index, ucb, color='r')
-                ax1.scatter(index, mean, color='b')
-                ax1.scatter(index, lcb, color='c')
-                ax2.scatter(index, sample_count, color='g')
-                plt.yscale('log')
-                plt.draw()
-                time.sleep(0.001)
+            if plot:
+                counter += 1
+                if counter % 500 == 0:
+                    ax1.cla()
+                    ax2.cla()
+                    ax1.scatter(index, ucb, color='r')
+                    ax1.scatter(index, mean, color='b')
+                    ax1.scatter(index, lcb, color='c')
+                    ax2.scatter(index, sample_count, color='g')
+                    plt.yscale('log')
+                    plt.draw()
+                    time.sleep(0.001)
 
         return index[0]
 
-    def ucb_risk(self, epsilon, delta):
-        rou = (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
-        return math.sqrt(rou * delta) + 4 * rou * delta / (1 - rou * delta)
-
-    def ucb_delta(self, epsilon, risk):
-        temp = risk * epsilon / 5 / (2 + epsilon)
-        return temp ** (1 / (1 + epsilon))
-
-    def run_ucb(self, sim):
-        beta = 1
-        alpha = 9
-        epsilon = 0.01
-        delta = 0.0001
-
-        ax1, ax2 = self.init_display()
-        mean_array = np.zeros(sim.K)
-        sample_count = np.ones(sim.K) * 3
-
-        for i in range(0, sim.K):
-            mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
-
-        counter = 0
-        finish = False
-        while not finish:
-            explore_val = np.zeros(sim.K)
-            mean = np.zeros(sim.K)
-            for i in range(0, sim.K):
-                if sample_count[i] == 0:
-                    explore_val[i] = +100000
-                    mean = 0.0
-                else:
-                    n = sample_count[i]
-                    temp = math.log(math.log((1 + epsilon) * n) / delta)
-                    explore_val[i] = mean_array[i] / sample_count[i] + \
-                                     (1 + beta) * (1 + math.sqrt(epsilon)) * math.sqrt(2 * (1 + epsilon) * temp / n)
-                    mean[i] = mean_array[i] / sample_count[i]
-
-            cur_sample = np.argmax(explore_val)
-            mean_array[cur_sample] += sim.sim(cur_sample)
-            sample_count[cur_sample] += 1
-
-            sample_sum = np.sum(sample_count)
-
-            counter += 1
-            if counter % 20 == 0:
-                ax1.cla()
-                ax2.cla()
-                ax1.scatter(range(0, sim.K), explore_val, color='r')
-                ax1.scatter(range(0, sim.K), mean, color='b')
-                ax2.scatter(range(0, sim.K), sample_count, color='g')
-                plt.draw()
-                time.sleep(0.001)
-
-            for i in range(0, sim.K):
-                if sample_count[i] >= 1 + alpha * (sample_sum - sample_count[i]):
-                    finish = True
-
-
-
 if __name__ == '__main__':
     sim = Simulator(200, kind='H3')
-    agent = Agent()
+    agent = LILUCBAgent()
 
-    agent.run_ae(sim)
+    agent.run(sim, plot=True)
     print(sim.nsamples)
     sim.plot_samples()
 
