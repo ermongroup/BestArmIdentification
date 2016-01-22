@@ -6,6 +6,8 @@ import random
 import matplotlib.pyplot as plt
 import math
 import time
+from scipy.special import zeta
+
 
 class Simulator:
     def __init__(self, K, kind='H2'):
@@ -71,11 +73,15 @@ class MABTestBench:
             correct_count = 0
             sample_count = np.zeros(self.size)
             for rep in range(0, self.size):
-                print("    " + str(rep) + "-th iteration")
+                print("    " + str(rep) + "-th iteration"),
                 sim = Simulator(K, self.kind)
                 if agent.run(sim) == 0:
                     correct_count += 1
+                    print("correct"),
+                else:
+                    print("incorrect"),
                 sample_count[rep] = sim.finish()
+                print(str(sample_count[rep] / sim.hardness()) + " samples")
 
             narms_array[i] = K
             accuracy[i] = float(correct_count) / self.size
@@ -121,8 +127,9 @@ class BanditAgent:
         return ax1, ax2
 
 class LILUCBAgent(BanditAgent):
-    def __init__(self):
+    def __init__(self, confidence):
         BanditAgent.__init__(self)
+        self.confidence = confidence
 
     def run(self, sim, plot=False):
         beta = 1
@@ -186,11 +193,12 @@ class LILUCBAgent(BanditAgent):
 
 
 class LILAEAgent(BanditAgent):
-    def __init__(self):
+    def __init__(self, confidence):
         BanditAgent.__init__(self)
         self.a = 0.8
-        self.b = 3.0
         self.c = 1.1
+        self.confidence = confidence
+        self.b = (math.log(zeta(2 * self.a / self.c, 1)) - math.log(confidence)) * self.c / 2
 
     def run(self, sim, plot=False):
         if plot:
@@ -247,9 +255,89 @@ class LILAEAgent(BanditAgent):
 
         return index[0]
 
+class LILLSAgent(BanditAgent):
+    def __init__(self, confidence):
+        BanditAgent.__init__(self)
+        self.confidence = confidence / 2
+
+    def boundary(self, n, delta, epsilon=0.01):
+        temp = math.log((math.log(1 + epsilon) + math.log(n)) / delta)
+        return math.sqrt((1 + epsilon) * n * temp / 2) / n * (1 + math.sqrt(epsilon))
+
+    def run(self, sim, plot=False):
+        beta = 1
+        alpha = 9
+        epsilon = 0.01
+        delta = (self.confidence * epsilon / 5 / (2 + epsilon)) ** (1 / (1+epsilon))
+
+        if plot:
+            ax1, ax2 = self.init_display()
+        mean_array = np.zeros(sim.K)
+        sample_count = np.ones(sim.K) * 3
+
+        for i in range(0, sim.K):
+            mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
+
+        counter = 0
+        finish = False
+        while not finish:
+            explore_val = np.zeros(sim.K)
+            mean = np.zeros(sim.K)
+            for i in range(0, sim.K):
+                if sample_count[i] == 0:
+                    explore_val[i] = +100000
+                    mean = 0.0
+                else:
+                    n = sample_count[i]
+                    temp = math.log(math.log((1 + epsilon) * n) / delta)
+                    explore_val[i] = mean_array[i] / sample_count[i] + \
+                                     (1 + beta) * (1 + math.sqrt(epsilon)) * math.sqrt(2 * (1 + epsilon) * temp / n)
+                    mean[i] = mean_array[i] / sample_count[i]
+
+            cur_sample = np.argmax(explore_val)
+            mean_array[cur_sample] += sim.sim(cur_sample)
+            sample_count[cur_sample] += 1
+
+            sample_sum = np.sum(sample_count)
+
+            for i in range(0, sim.K):
+                if sample_count[i] >= 1 + alpha * (sample_sum - sample_count[i]):
+                    return i
+
+            # Inspect LIL stopping criteria
+            stop = True
+            best = np.argmax(mean_array / sample_count)
+            lcb = mean_array[best] / sample_count[best] - self.boundary(sample_count[best], delta / sim.K)
+            for j in range(0, sim.K):
+                if j == best:
+                    continue
+                ucb = mean_array[j] / sample_count[j] + self.boundary(sample_count[j], delta / sim.K)
+                if lcb < ucb:
+                    stop = False
+                    break
+            if stop:
+                return best
+
+            if plot:
+                counter += 1
+                if counter % 50 == 0:
+                    ucb = mean_array / sample_count
+                    for j in range(0, sim.K):
+                        ucb[j] += self.boundary(sample_count[j], delta / sim.K)
+
+                    ax1.cla()
+                    ax2.cla()
+                    ax1.scatter(range(0, sim.K), explore_val, color='r')
+                    ax1.scatter(range(0, sim.K), ucb, color='c')
+                    ax1.scatter(range(0, sim.K), mean, color='b')
+                    ax2.scatter(range(0, sim.K), sample_count, color='g')
+                    plt.draw()
+                    time.sleep(0.001)
+
 if __name__ == '__main__':
-    sim = Simulator(200, kind='H3')
-    ae_agent = LILAEAgent()
+    sim = Simulator(20, kind='H2')
+    ae_agent = LILLSAgent(0.05)
+    #ae_agent.run(sim, plot=True)
 
     #ae_agent.run(sim, plot=True)
     #print(sim.nsamples)
