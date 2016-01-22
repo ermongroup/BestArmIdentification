@@ -14,25 +14,38 @@ class Simulator:
         self.kind = kind
         self.sample_size = np.zeros(K)
 
+        self.mean_list = np.zeros(K)
+        for arm in range(0, K):
+            if self.kind == 'H0':
+                if arm == 0:
+                    self.mean_list[arm] = 0.6
+                else:
+                    self.mean_list[arm] = 0.3
+            elif self.kind == 'H2':
+                self.mean_list[arm] = 0.9 - (float(arm) / self.K) ** 0.6
+                if self.mean_list[arm] < 0:
+                    self.mean_list[arm] = 0
+            elif self.kind == 'H':
+                self.mean_list[arm] = 0.5
+
     def sim(self, arm):
-        self.sample_size[arm] += 1
         self.nsamples += 1
-        if self.kind == 'H0':
-            if arm == 0:
-                mean = 0.6
-            else:
-                mean = 0.3
-        elif self.kind == 'H2':
-            mean = 0.9 - (float(arm) / self.K) ** 0.6
-        elif self.kind == 'H3':
-            if arm == 0:
-                mean = 0.5
-            else:
-                mean = 0.5
-        if random.random() > mean:
+        self.sample_size[arm] += 1
+        if random.random() > self.mean_list[arm]:
             return 0
         else:
             return 1
+
+    def hardness(self):
+        hardness_sum = 0.0
+        for arm in range(1, self.K):
+            hardness_sum += 1.0 / ((self.mean_list[0] - self.mean_list[arm]) ** 2)
+        return hardness_sum
+
+    def finish(self):
+        copy = self.nsamples
+        self.nsamples = 0
+        return copy
 
     def plot_samples(self):
         plt.clf()
@@ -40,6 +53,61 @@ class Simulator:
         plt.yscale('log')
         plt.ioff()
         plt.show()
+
+class MABTestBench:
+    def __init__(self, kind, size):
+        self.kind = kind
+        self.size = size
+        self.k_range = 5
+
+    def test(self, agent):
+        narms_array = np.zeros(self.k_range)
+        accuracy = np.zeros(self.k_range)
+        average_sample = np.zeros(self.k_range)
+        majority_sample = np.zeros(self.k_range)
+        K = 2
+        for i in range(0, self.k_range):
+            print("Testing on K=" + str(K))
+            correct_count = 0
+            sample_count = np.zeros(self.size)
+            for rep in range(0, self.size):
+                print("    " + str(rep) + "-th iteration")
+                sim = Simulator(K, self.kind)
+                if agent.run(sim) == 0:
+                    correct_count += 1
+                sample_count[rep] = sim.finish()
+
+            narms_array[i] = K
+            accuracy[i] = float(correct_count) / self.size
+            average_sample[i] = np.sum(sample_count) / self.size / sim.hardness()
+            majority_sample[i] = np.sort(sample_count)[int(self.size * 0.9)] / sim.hardness()
+            K *= 2
+        return narms_array, accuracy, average_sample, majority_sample
+
+    def test_and_plot(self, agent):
+        n_arms, accuracy, average_sample, majority_sample = self.test(agent)
+        print(n_arms, accuracy, average_sample, majority_sample)
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        ax2 = ax1.twinx()
+
+        lns1 = ax1.scatter(n_arms, accuracy, c='r', label='accuracy')
+        lns2 = ax2.plot(n_arms, average_sample, c='g', label='average sample usage')
+        lns3 = ax2.plot(n_arms, majority_sample, c='b', label='top 10% sample usage')
+        ax2.set_yscale('log')
+        ax1.set_xscale('log')
+        ax2.set_xscale('log')
+        ax1.set_ylim((0.8, 1.05))
+        ax1.set_xlabel('number of arms')
+        ax1.set_ylabel('accuracy')
+        ax2.set_ylabel('samples used')
+        lns = [lns1] + lns2 + lns3
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='lower right')
+        plt.show()
+
+        return n_arms, accuracy, average_sample, majority_sample
+
 
 class BanditAgent:
     def __init__(self):
@@ -181,27 +249,13 @@ class LILAEAgent(BanditAgent):
 
 if __name__ == '__main__':
     sim = Simulator(200, kind='H3')
-    agent = LILUCBAgent()
+    ae_agent = LILAEAgent()
 
-    agent.run(sim, plot=True)
-    print(sim.nsamples)
-    sim.plot_samples()
+    #ae_agent.run(sim, plot=True)
+    #print(sim.nsamples)
+    #sim.plot_samples()
 
-    delta_array = []
-    risk_array = []
-    for delta_index in range(0, 100):
-        delta = delta_index * 0.0001
-        delta_array.append(delta)
-        risk_array.append(agent.ucb_risk(0.01, delta))
-    plt.plot(delta_array, risk_array)
-    plt.show()
+    test = MABTestBench(kind='H2', size=10)
+    test.test_and_plot(ae_agent)
 
-    risk_array = []
-    delta_array = []
-    for risk_index in range(0, 100):
-        risk = risk_index * 0.01
-        delta_array.append(agent.ucb_delta(0.01, risk))
-        risk_array.append(risk)
-    plt.plot(risk_array, delta_array)
-    plt.show()
 
