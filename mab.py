@@ -7,15 +7,15 @@ import matplotlib.pyplot as plt
 import math
 import time
 from scipy.special import zeta
-
+from numpy.random import normal as nrand
 
 class Simulator:
-    def __init__(self, K, kind='H2'):
+    def __init__(self, K, kind='H2', dist='bernoulli'):
         self.K = K
         self.nsamples = 0
         self.kind = kind
         self.sample_size = np.zeros(K)
-
+        self.dist = dist
         self.mean_list = np.zeros(K)
         for arm in range(0, K):
             if self.kind == 'H0':
@@ -24,7 +24,7 @@ class Simulator:
                 else:
                     self.mean_list[arm] = 0.3
             elif self.kind == 'H2':
-                self.mean_list[arm] = 0.9 - (float(arm) / self.K) ** 0.6
+                self.mean_list[arm] = 1.0 - (float(arm) / self.K) ** 0.6
                 if self.mean_list[arm] < 0:
                     self.mean_list[arm] = 0
             elif self.kind == 'H':
@@ -33,10 +33,14 @@ class Simulator:
     def sim(self, arm):
         self.nsamples += 1
         self.sample_size[arm] += 1
-        if random.random() > self.mean_list[arm]:
-            return 0
+        if self.dist == 'bernoulli':
+            if random.random() > self.mean_list[arm]:
+                return 0
+            else:
+                return 1
         else:
-            return 1
+            return nrand(self.mean_list[arm], 0.25)
+
 
     def hardness(self):
         hardness_sum = 0.0
@@ -74,7 +78,7 @@ class MABTestBench:
             sample_count = np.zeros(self.size)
             for rep in range(0, self.size):
                 print("    " + str(rep) + "-th iteration"),
-                sim = Simulator(K, self.kind)
+                sim = Simulator(K, self.kind, dist='gaussian')
                 if agent.run(sim) == 0:
                     correct_count += 1
                     print("correct"),
@@ -114,6 +118,30 @@ class MABTestBench:
 
         return n_arms, accuracy, average_sample, majority_sample
 
+    def compare_and_plot(self, agents, labels):
+        color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        #ax2 = ax1.twinx()
+        #plt.hold(True)
+        #plt.title('Comparison of Required Sample Size')
+
+        counter = 0
+        lns = []
+        for agent in agents:
+            mean, accuracy, average_sample, majority_sample = self.test(agent)
+            lns += ax1.plot(mean, average_sample, c=color_list[counter], label=labels[counter])
+            counter += 1
+
+        ax1.set_xlim((min(mean), max(mean)))
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
+        ax1.set_xlabel('number of arms')
+        ax1.set_ylabel('number of samples')
+
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='upper right')
+        plt.show()
 
 class BanditAgent:
     def __init__(self):
@@ -336,14 +364,22 @@ class LILLSAgent(BanditAgent):
 
 if __name__ == '__main__':
     sim = Simulator(20, kind='H2')
-    ae_agent = LILLSAgent(0.05)
+    ae_agent = LILAEAgent(0.05)
+
+    ucb_agent = LILUCBAgent(0.05)
+
+    ls_agent = LILLSAgent(0.05)
+
+    agents = [ae_agent, ucb_agent, ls_agent]
+    labels = ['LIL-AE', 'LIL-UCB', 'LIL-UCB + LS']
     #ae_agent.run(sim, plot=True)
 
     #ae_agent.run(sim, plot=True)
     #print(sim.nsamples)
     #sim.plot_samples()
 
-    test = MABTestBench(kind='H2', size=10)
-    test.test_and_plot(ae_agent)
+    test = MABTestBench(kind='H2', size=2)
+    test.compare_and_plot(agents, labels)
+    #test.test_and_plot(ae_agent)
 
 
