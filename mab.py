@@ -166,46 +166,49 @@ class BanditAgent:
         plt.show()
         return ax1, ax2
 
-class LILUCBAgent(BanditAgent):
+class LILAgent:
     def __init__(self, confidence):
-        BanditAgent.__init__(self)
         self.confidence = confidence
+        delta = 1.0
+        while self.risk(delta) > self.confidence:
+            delta /= 1.2
+        self.delta = delta
+        BanditAgent.__init__(self)
+
+    def risk(self, delta, epsilon = 0.01):
+        rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
+        return rou * delta
+
+    def boundary(self, n, delta, epsilon=0.01):
+        temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
+        return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
+
+class LILUCBAgent(LILAgent):
+    def __init__(self, confidence):
+        LILAgent.__init__(self, confidence)
 
     def run(self, sim, plot=False):
         beta = 1
         alpha = 9
         epsilon = 0.01
-        delta = 0.0001
+        delta = self.delta
 
         if plot:
             ax1, ax2 = self.init_display()
         mean_array = np.zeros(sim.K)
         sample_count = np.ones(sim.K) * 3
-
         for i in range(0, sim.K):
             mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
 
         counter = 0
         finish = False
         while not finish:
-            explore_val = np.zeros(sim.K)
-            mean = np.zeros(sim.K)
-            for i in range(0, sim.K):
-                if sample_count[i] == 0:
-                    explore_val[i] = +100000
-                    mean = 0.0
-                else:
-                    n = sample_count[i]
-                    temp = math.log(math.log((1 + epsilon) * n) / delta)
-                    explore_val[i] = mean_array[i] / sample_count[i] + \
-                                     (1 + beta) * (1 + math.sqrt(epsilon)) * math.sqrt(2 * (1 + epsilon) * temp / n)
-                    mean[i] = mean_array[i] / sample_count[i]
+            mean = mean_array / sample_count
+            explore_val = mean + (1 + beta) * self.boundary(sample_count, delta)
 
             cur_sample = np.argmax(explore_val)
             mean_array[cur_sample] += sim.sim(cur_sample)
             sample_count[cur_sample] += 1
-
-            sample_sum = np.sum(sample_count)
 
             if plot:
                 counter += 1
@@ -218,34 +221,14 @@ class LILUCBAgent(BanditAgent):
                     plt.draw()
                     time.sleep(0.001)
 
+            sample_sum = np.sum(sample_count)
             for i in range(0, sim.K):
                 if sample_count[i] >= 1 + alpha * (sample_sum - sample_count[i]):
                     return i
 
-    def ucb_risk(self, epsilon, delta):
-        rou = (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
-        return math.sqrt(rou * delta) + 4 * rou * delta / (1 - rou * delta)
-
-    def ucb_delta(self, epsilon, risk):
-        temp = risk * epsilon / 5 / (2 + epsilon)
-        return temp ** (1 / (1 + epsilon))
-
-class LILLUCBAgent(BanditAgent):
+class LILLUCBAgent(LILAgent):
     def __init__(self, confidence):
-        BanditAgent.__init__(self)
-        self.confidence = confidence
-        delta = 1.0
-        while self.risk(delta) > self.confidence:
-            delta /= 1.2
-        self.delta = delta
-
-    def risk(self, delta, epsilon = 0.01):
-        rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
-        return rou * delta
-
-    def boundary(self, n, delta, epsilon=0.01):
-        temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
-        return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
+        LILAgent.__init__(self, confidence)
 
     def run(self, sim, plot=False):
         delta = self.delta
@@ -365,19 +348,7 @@ class LILAEAgent(BanditAgent):
 
 class LILLSAgent(BanditAgent):
     def __init__(self, confidence):
-        BanditAgent.__init__(self)
-        self.confidence = confidence / 2
-        self.delta = 1.0
-        while self.risk(self.delta) > self.confidence:
-            self.delta /= 1.2
-
-    def risk(self, delta, epsilon = 0.01):
-        rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
-        return rou * delta
-
-    def boundary(self, n, delta, epsilon=0.01):
-        temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
-        return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
+        BanditAgent.__init__(self, confidence / 2)
 
     def run(self, sim, plot=False):
         beta = 1
