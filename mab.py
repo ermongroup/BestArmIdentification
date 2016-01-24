@@ -166,14 +166,15 @@ class BanditAgent:
         plt.show()
         return ax1, ax2
 
-class LILAgent:
+class LILAgent(BanditAgent):
     def __init__(self, confidence):
+        BanditAgent.__init__(self)
         self.confidence = confidence
         delta = 1.0
         while self.risk(delta) > self.confidence:
             delta /= 1.2
         self.delta = delta
-        BanditAgent.__init__(self)
+
 
     def risk(self, delta, epsilon = 0.01):
         rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
@@ -346,9 +347,9 @@ class LILAEAgent(BanditAgent):
 
         return index[0]
 
-class LILLSAgent(BanditAgent):
+class LILLSAgent(LILAgent):
     def __init__(self, confidence):
-        BanditAgent.__init__(self, confidence / 2)
+        LILAgent.__init__(self, confidence / 2)
 
     def run(self, sim, plot=False):
         beta = 1
