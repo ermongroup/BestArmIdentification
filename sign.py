@@ -10,12 +10,14 @@ from scipy.special import zeta
 
 
 class Simulator:
+    """ Class that simulates a random variable with required mean, and records number of samples requested """
     def __init__(self, kind='bernoulli', mean=0.01):
         self.nsamples = 0
         self.kind = kind
         self.mean = mean
 
     def sim(self):
+        """ Draw a sample from the random variable """
         self.nsamples += 1
         if self.kind == 'bernoulli':
             if random.random() > (self.mean + 1.0) / 2:
@@ -24,11 +26,113 @@ class Simulator:
                 return 0.5
 
     def finish(self):
+        """ Clear internal states and return samples collected so far """
         copy = self.nsamples
         self.nsamples = 0
         return copy
 
+
+class TestBench:
+    def __init__(self, size):
+        """ size is the number of tests to perform on each configuration to average """
+        self.test_size = size
+
+    def test(self, agent):
+        """ Run tests on an agent, return list of mean used, accuracy, average samples consumed, and samples
+        consumed by top 10% of runs """
+        mean_range = 22
+        mean_array = np.zeros(mean_range)
+        accuracy = np.zeros(mean_range)
+        average_sample = np.zeros(mean_range)
+        majority_sample = np.zeros(mean_range)
+        for mean_index in range(0, mean_range):
+            mean = math.exp(-0.2 * mean_index)
+            print("Testing on Bernoulli: mean = " + str(mean)),
+            correct_count = 0
+            sample_count = np.zeros(self.test_size)
+
+            print_time = time.time()
+            for iter in range(0, self.test_size):
+                if random.random() > 0.5:
+                    mean = -mean
+                sim = Simulator(kind="bernoulli", mean=mean)
+                result = agent.run(sim, 0.05)
+                if (result is True and mean > 0) or (result is False and mean < 0):
+                    correct_count += 1
+                sample_count[iter] = sim.finish()
+                if time.time() - print_time > 1:
+                    print(iter),
+                    print_time = time.time()
+
+            mean_array[mean_index] = math.fabs(mean)
+            accuracy[mean_index] = float(correct_count) / self.test_size
+            average_sample[mean_index] = np.sum(sample_count) / self.test_size
+            majority_sample[mean_index] = np.sort(sample_count)[int(self.test_size * 0.9)]
+            print("")
+        return mean_array, accuracy, average_sample, majority_sample
+
+    def compare_and_plot(self, agents, labels, param_list):
+        """ Run test on multiple agents and compare their average sample complexity """
+        color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        ax2 = ax1.twinx()
+        plt.hold(True)
+
+        counter = 0
+        lns = []
+        for agent in agents:
+            mean, accuracy, average_sample, majority_sample = self.test(agent)
+            print(param_list[counter], labels[counter])
+            for param, label in zip(param_list[counter], labels[counter]):
+                print (param, label)
+                if param == 'sample_average':
+                    lns += ax2.plot(mean, average_sample, c=color_list[counter], label=label)
+                elif param == 'accuracy':
+                    lns.append(ax1.scatter(mean, accuracy, c=color_list[counter], label=label))
+            counter += 1
+        ax1.set_xlim((min(mean), max(mean)))
+        ax1.set_xscale('log')
+        ax2.set_xscale('log')
+        ax2.set_yscale('log')
+        ax1.set_xlabel('mean', fontsize=16)
+        ax1.set_ylabel('accuracy', fontsize=16)
+        ax2.set_ylabel('number of samples', fontsize=16)
+
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='upper right')
+        plt.show()
+
+    def test_and_plot(self, agent):
+        """ Run test on agent and plot results """
+        mean, accuracy, average_sample, majority_sample = self.test(agent)
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        ax2 = ax1.twinx()
+
+        lns1 = ax1.scatter(mean, accuracy, c='r', label='accuracy')
+        lns2 = ax2.plot(mean, average_sample, c='g', label='average sample usage')
+        lns3 = ax2.plot(mean, majority_sample, c='b', label='top 10% sample usage')
+        ax2.set_yscale('log')
+        ax1.set_xscale('log')
+        ax2.set_xscale('log')
+        ax1.set_ylim((0.8, 1.05))
+        ax1.set_xlim((0.01, 1))
+        ax2.set_xlim((0.01, 1))
+        ax1.set_xlabel('mean')
+        ax1.set_ylabel('accuracy')
+        ax2.set_ylabel('samples used')
+        lns = [lns1] + lns2 + lns3
+        labs = [l.get_label() for l in lns]
+        plt.legend(lns, labs, loc='lower right')
+        plt.show()
+
+        return mean, accuracy, average_sample, majority_sample
+
+
 class ExpGap:
+    """ An agent that uses the exponential gap algorithm """
     def __init__(self):
         pass
 
@@ -50,7 +154,9 @@ class ExpGap:
                 return False
             r += 1.0
 
+
 class LILTest:
+    """ An agent that uses the LIL bound """
     def __init__(self, stop_interval=1, a=0.6, c=1.1, b=None):
         self.stop_interval = stop_interval
         self.a = a
@@ -90,101 +196,9 @@ class LILTest:
             elif sum <= -boundary:
                 return False
 
-class TestBench:
-    def __init__(self, size):
-        self.test_size = size
-
-    def test(self, agent):
-        mean_range = 22
-        mean_array = np.zeros(mean_range)
-        accuracy = np.zeros(mean_range)
-        average_sample = np.zeros(mean_range)
-        majority_sample = np.zeros(mean_range)
-        for mean_index in range(0, mean_range):
-            mean = math.exp(-0.2 * mean_index)
-            print("Testing on Bernoulli: mean = " + str(mean)),
-            correct_count = 0
-            sample_count = np.zeros(self.test_size)
-
-            print_time = time.time()
-            for iter in range(0, self.test_size):
-                if random.random() > 0.5:
-                    mean = -mean
-                sim = Simulator(kind="bernoulli", mean=mean)
-                result = agent.run(sim, 0.05)
-                if (result is True and mean > 0) or (result is False and mean < 0):
-                    correct_count += 1
-                sample_count[iter] = sim.finish()
-                if time.time() - print_time > 1:
-                    print(iter),
-                    print_time = time.time()
-
-            mean_array[mean_index] = math.fabs(mean)
-            accuracy[mean_index] = float(correct_count) / self.test_size
-            average_sample[mean_index] = np.sum(sample_count) / self.test_size
-            majority_sample[mean_index] = np.sort(sample_count)[int(self.test_size * 0.9)]
-            print("")
-        return mean_array, accuracy, average_sample, majority_sample
-
-    def compare_and_plot(self, agents, labels, param_list):
-        color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
-        fig = plt.figure()
-        ax1 = fig.add_subplot(111)
-        ax2 = ax1.twinx()
-        plt.hold(True)
-        #plt.title('Comparison of Required Sample Size')
-
-        counter = 0
-        lns = []
-        for agent in agents:
-            mean, accuracy, average_sample, majority_sample = self.test(agent)
-            print(param_list[counter], labels[counter])
-            for param, label in zip(param_list[counter], labels[counter]):
-                print (param, label)
-                if param == 'sample_average':
-                    lns += ax2.plot(mean, average_sample, c=color_list[counter], label=label)
-                elif param == 'accuracy':
-                    lns.append(ax1.scatter(mean, accuracy, c=color_list[counter], label=label))
-            counter += 1
-        ax1.set_xlim((min(mean), max(mean)))
-        ax1.set_xscale('log')
-        ax2.set_xscale('log')
-        ax2.set_yscale('log')
-        ax1.set_xlabel('mean')
-        ax1.set_ylabel('accuracy')
-        ax2.set_ylabel('number of samples')
-
-        labs = [l.get_label() for l in lns]
-        plt.legend(lns, labs, loc='upper right')
-        plt.show()
-
-    def test_and_plot(self, agent):
-        mean, accuracy, average_sample, majority_sample = self.test(agent)
-
-        fig = plt.figure()
-        ax1 = fig.add_subplot(111)
-        ax2 = ax1.twinx()
-
-        lns1 = ax1.scatter(mean, accuracy, c='r', label='accuracy')
-        lns2 = ax2.plot(mean, average_sample, c='g', label='average sample usage')
-        lns3 = ax2.plot(mean, majority_sample, c='b', label='top 10% sample usage')
-        ax2.set_yscale('log')
-        ax1.set_xscale('log')
-        ax2.set_xscale('log')
-        ax1.set_ylim((0.8, 1.05))
-        ax1.set_xlim((0.01, 1))
-        ax2.set_xlim((0.01, 1))
-        ax1.set_xlabel('mean')
-        ax1.set_ylabel('accuracy')
-        ax2.set_ylabel('samples used')
-        lns = [lns1] + lns2 + lns3
-        labs = [l.get_label() for l in lns]
-        plt.legend(lns, labs, loc='lower right')
-        plt.show()
-
-        return mean, accuracy, average_sample, majority_sample
 
 class SimulationLemma:
+    """ An agent that uses constructive proof of second simulation lemma """
     def __init__(self):
         pass
 
