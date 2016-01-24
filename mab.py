@@ -27,6 +27,10 @@ class Simulator:
                 self.mean_list[arm] = 1.0 - (float(arm) / self.K) ** 0.6
                 if self.mean_list[arm] < 0:
                     self.mean_list[arm] = 0
+            elif self.kind == 'H3':
+                self.mean_list[arm] = 1.0 - float(arm) / self.K
+                if self.mean_list[arm] < 0:
+                    self.mean_list[arm] = 0.0
             elif self.kind == 'H':
                 self.mean_list[arm] = 0.5
 
@@ -40,7 +44,6 @@ class Simulator:
                 return 1
         else:
             return nrand(self.mean_list[arm], 0.25)
-
 
     def hardness(self):
         hardness_sum = 0.0
@@ -64,7 +67,7 @@ class MABTestBench:
     def __init__(self, kind, size):
         self.kind = kind
         self.size = size
-        self.k_range = 5
+        self.k_range = 7
 
     def test(self, agent):
         narms_array = np.zeros(self.k_range)
@@ -120,6 +123,7 @@ class MABTestBench:
 
     def compare_and_plot(self, agents, labels):
         color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+        type_list = ['-', '--', '-.', ':']
         fig = plt.figure()
         ax1 = fig.add_subplot(111)
         #ax2 = ax1.twinx()
@@ -130,17 +134,25 @@ class MABTestBench:
         lns = []
         for agent in agents:
             mean, accuracy, average_sample, majority_sample = self.test(agent)
-            lns += ax1.plot(mean, average_sample, c=color_list[counter], label=labels[counter])
+            lns += ax1.plot(mean, average_sample,
+                            type_list[counter % len(type_list)],
+                            c=color_list[counter % len(color_list)],
+                            label=labels[counter], linewidth=4)
             counter += 1
 
         ax1.set_xlim((min(mean), max(mean)))
         ax1.set_xscale('log')
         ax1.set_yscale('log')
-        ax1.set_xlabel('number of arms')
-        ax1.set_ylabel('number of samples')
+
+        for tick in ax1.xaxis.get_major_ticks():
+            tick.label.set_fontsize(15)
+        for tick in ax1.yaxis.get_major_ticks():
+            tick.label.set_fontsize(15)
+        ax1.set_xlabel('nbr of arms', fontsize=16)
+        ax1.set_ylabel('nbr of samples (in units of H1)', fontsize=16)
 
         labs = [l.get_label() for l in lns]
-        plt.legend(lns, labs, loc='upper right')
+        plt.legend(lns, labs, loc='upper right', fontsize=16)
         plt.show()
 
 class BanditAgent:
@@ -218,14 +230,81 @@ class LILUCBAgent(BanditAgent):
         temp = risk * epsilon / 5 / (2 + epsilon)
         return temp ** (1 / (1 + epsilon))
 
+class LILLUCBAgent(BanditAgent):
+    def __init__(self, confidence):
+        BanditAgent.__init__(self)
+        self.confidence = confidence
+        delta = 1.0
+        while self.risk(delta) > self.confidence:
+            delta /= 1.2
+        self.delta = delta
+
+    def risk(self, delta, epsilon = 0.01):
+        rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
+        return rou * delta
+
+    def boundary(self, n, delta, epsilon=0.01):
+        temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
+        return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
+
+    def run(self, sim, plot=False):
+        delta = self.delta
+
+        if plot:
+            ax1, ax2 = self.init_display()
+
+        mean_array = np.zeros(sim.K)
+        sample_count = np.ones(sim.K) * 3
+        for i in range(0, sim.K):
+            mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
+
+        counter = 0
+        finish = False
+        while not finish:
+            mean = mean_array / sample_count
+            ucb = mean + self.boundary(sample_count, delta/sim.K)
+
+            best = np.argmax(mean)
+            mean_array[best] += sim.sim(best)
+            sample_count[best] += 1
+
+            temp = ucb[best]
+            ucb[best] = -1000000
+            cur_sample = np.argmax(ucb)
+            mean_array[cur_sample] += sim.sim(cur_sample)
+            sample_count[cur_sample] += 1
+            ucb[best] = temp
+
+            # Inspect LIL stopping criteria
+            stop = True
+            lcb = mean_array[best] / sample_count[best] - self.boundary(sample_count[best], delta/sim.K)
+            for j in range(0, sim.K):
+                if j == best:
+                    continue
+                if lcb < ucb[j]:
+                    stop = False
+                    break
+            if stop:
+                return best
+
+            if plot:
+                counter += 1
+                if counter % 50 == 0:
+                    ax1.cla()
+                    ax2.cla()
+                    ax1.scatter(range(0, sim.K), ucb, color='c')
+                    ax1.scatter(range(0, sim.K), mean, color='b')
+                    ax2.scatter(range(0, sim.K), sample_count, color='g')
+                    plt.draw()
+                    time.sleep(0.001)
 
 
 class LILAEAgent(BanditAgent):
     def __init__(self, confidence):
         BanditAgent.__init__(self)
-        self.a = 0.8
+        self.a = 0.6
         self.c = 1.1
-        self.confidence = confidence
+        self.confidence = confidence / 2
         self.b = (math.log(zeta(2 * self.a / self.c, 1)) - math.log(confidence)) * self.c / 2
 
     def run(self, sim, plot=False):
@@ -246,7 +325,8 @@ class LILAEAgent(BanditAgent):
             boundary = np.sqrt(self.a * sample_count * np.log(np.log(sample_count) / np.log(self.c) + 1)
                                + self.b * sample_count) / sample_count
             n = sample_count[np.argmax(mean)]
-            boundary[np.argmax(mean)] = np.sqrt(self.a * n * math.log(math.log(n, self.c) + 1) + self.b * n * math.log(mean_array.size, 1.3)) / n
+            boundary[np.argmax(mean)] = np.sqrt(self.a * n * math.log(math.log(n, self.c) + 1) +
+                                                (self.b + self.c * math.log(mean_array.size) / 2) * n) / n
             ucb = mean + boundary
             lcb = mean - boundary
             maxlcb = lcb[np.argmax(mean)]
@@ -287,40 +367,37 @@ class LILLSAgent(BanditAgent):
     def __init__(self, confidence):
         BanditAgent.__init__(self)
         self.confidence = confidence / 2
+        self.delta = 1.0
+        while self.risk(self.delta) > self.confidence:
+            self.delta /= 1.2
+
+    def risk(self, delta, epsilon = 0.01):
+        rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
+        return rou * delta
 
     def boundary(self, n, delta, epsilon=0.01):
-        temp = math.log((math.log(1 + epsilon) + math.log(n)) / delta)
-        return math.sqrt((1 + epsilon) * n * temp / 2) / n * (1 + math.sqrt(epsilon))
+        temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
+        return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
 
     def run(self, sim, plot=False):
         beta = 1
         alpha = 9
-        epsilon = 0.01
-        delta = (self.confidence * epsilon / 5 / (2 + epsilon)) ** (1 / (1+epsilon))
+        delta = self.delta
 
         if plot:
             ax1, ax2 = self.init_display()
+
         mean_array = np.zeros(sim.K)
         sample_count = np.ones(sim.K) * 3
-
         for i in range(0, sim.K):
             mean_array[i] = sim.sim(i) + sim.sim(i) + sim.sim(i)
 
         counter = 0
         finish = False
         while not finish:
-            explore_val = np.zeros(sim.K)
-            mean = np.zeros(sim.K)
-            for i in range(0, sim.K):
-                if sample_count[i] == 0:
-                    explore_val[i] = +100000
-                    mean = 0.0
-                else:
-                    n = sample_count[i]
-                    temp = math.log(math.log((1 + epsilon) * n) / delta)
-                    explore_val[i] = mean_array[i] / sample_count[i] + \
-                                     (1 + beta) * (1 + math.sqrt(epsilon)) * math.sqrt(2 * (1 + epsilon) * temp / n)
-                    mean[i] = mean_array[i] / sample_count[i]
+            mean = mean_array / sample_count
+            explore_val = mean + (1 + beta) * self.boundary(sample_count, delta)
+            ucb = mean + self.boundary(sample_count, delta/sim.K)
 
             cur_sample = np.argmax(explore_val)
             mean_array[cur_sample] += sim.sim(cur_sample)
@@ -334,13 +411,12 @@ class LILLSAgent(BanditAgent):
 
             # Inspect LIL stopping criteria
             stop = True
-            best = np.argmax(mean_array / sample_count)
-            lcb = mean_array[best] / sample_count[best] - self.boundary(sample_count[best], delta / sim.K)
+            best = np.argmax(mean)
+            lcb = mean_array[best] / sample_count[best] - self.boundary(sample_count[best], delta/sim.K)
             for j in range(0, sim.K):
                 if j == best:
                     continue
-                ucb = mean_array[j] / sample_count[j] + self.boundary(sample_count[j], delta / sim.K)
-                if lcb < ucb:
+                if lcb < ucb[j]:
                     stop = False
                     break
             if stop:
@@ -363,23 +439,22 @@ class LILLSAgent(BanditAgent):
                     time.sleep(0.001)
 
 if __name__ == '__main__':
-    sim = Simulator(20, kind='H2')
+    sim = Simulator(20, kind='H0')
     ae_agent = LILAEAgent(0.05)
 
     ucb_agent = LILUCBAgent(0.05)
 
     ls_agent = LILLSAgent(0.05)
 
-    agents = [ae_agent, ucb_agent, ls_agent]
-    labels = ['LIL-AE', 'LIL-UCB', 'LIL-UCB + LS']
-    #ae_agent.run(sim, plot=True)
+    lucb_agent = LILLUCBAgent(0.05)
 
-    #ae_agent.run(sim, plot=True)
-    #print(sim.nsamples)
-    #sim.plot_samples()
+    test = MABTestBench(kind='H2', size=20)
 
-    test = MABTestBench(kind='H2', size=2)
-    test.compare_and_plot(agents, labels)
     #test.test_and_plot(ae_agent)
+
+    agents = [ae_agent, ucb_agent, ls_agent, lucb_agent]
+    labels = ['LIL-AE', 'LIL-UCB', 'LIL-UCB + LS', 'LIL-LUCB']
+    test.compare_and_plot(agents, labels)
+
 
 
