@@ -157,14 +157,31 @@ class MABTestBench:
 
 class BanditAgent:
     def __init__(self):
-        pass
+        self.ax1 = None
+        self.ax2 = None
 
     def init_display(self):
         plt.ion()
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
         plt.show()
+        self.ax1 = ax1
+        self.ax2 = ax2
         return ax1, ax2
+
+    def draw(self, x_index, left_objects, right_objects):
+        color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+        color_count = 0
+        self.ax1.cla()
+        self.ax2.cla()
+        for item in left_objects:
+            self.ax1.scatter(x_index, item, color=color_list[color_count % len(color_list)])
+            color_count += 1
+        for item in right_objects:
+            self.ax2.scatter(x_index, item, color=color_list[color_count % len(color_list)])
+            color_count += 1
+        plt.draw()
+        time.sleep(0.001)
 
 class LILAgent(BanditAgent):
     def __init__(self, confidence):
@@ -175,7 +192,6 @@ class LILAgent(BanditAgent):
             delta /= 1.2
         self.delta = delta
 
-
     def risk(self, delta, epsilon = 0.01):
         rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
         return rou * delta
@@ -184,6 +200,7 @@ class LILAgent(BanditAgent):
         temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
         return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
 
+
 class LILUCBAgent(LILAgent):
     def __init__(self, confidence):
         LILAgent.__init__(self, confidence)
@@ -191,11 +208,10 @@ class LILUCBAgent(LILAgent):
     def run(self, sim, plot=False):
         beta = 1
         alpha = 9
-        epsilon = 0.01
         delta = self.delta
 
         if plot:
-            ax1, ax2 = self.init_display()
+            self.init_display()
         mean_array = np.zeros(sim.K)
         sample_count = np.ones(sim.K) * 3
         for i in range(0, sim.K):
@@ -211,21 +227,15 @@ class LILUCBAgent(LILAgent):
             mean_array[cur_sample] += sim.sim(cur_sample)
             sample_count[cur_sample] += 1
 
-            if plot:
-                counter += 1
-                if counter % 20 == 0:
-                    ax1.cla()
-                    ax2.cla()
-                    ax1.scatter(range(0, sim.K), explore_val, color='r')
-                    ax1.scatter(range(0, sim.K), mean, color='b')
-                    ax2.scatter(range(0, sim.K), sample_count, color='g')
-                    plt.draw()
-                    time.sleep(0.001)
+            counter += 1
+            if plot and counter % 20 == 0:
+                self.draw(range(0, sim.K), [explore_val, mean], [sample_count])
 
             sample_sum = np.sum(sample_count)
             for i in range(0, sim.K):
                 if sample_count[i] >= 1 + alpha * (sample_sum - sample_count[i]):
                     return i
+
 
 class LILLUCBAgent(LILAgent):
     def __init__(self, confidence):
@@ -235,7 +245,7 @@ class LILLUCBAgent(LILAgent):
         delta = self.delta
 
         if plot:
-            ax1, ax2 = self.init_display()
+            self.init_display()
 
         mean_array = np.zeros(sim.K)
         sample_count = np.ones(sim.K) * 3
@@ -271,16 +281,9 @@ class LILLUCBAgent(LILAgent):
             if stop:
                 return best
 
-            if plot:
-                counter += 1
-                if counter % 50 == 0:
-                    ax1.cla()
-                    ax2.cla()
-                    ax1.scatter(range(0, sim.K), ucb, color='c')
-                    ax1.scatter(range(0, sim.K), mean, color='b')
-                    ax2.scatter(range(0, sim.K), sample_count, color='g')
-                    plt.draw()
-                    time.sleep(0.001)
+            counter += 1
+            if plot and counter % 50 == 0:
+                self.draw(range(0, sim.K), [ucb, mean], [sample_count])
 
 
 class LILAEAgent(BanditAgent):
@@ -293,7 +296,7 @@ class LILAEAgent(BanditAgent):
 
     def run(self, sim, plot=False):
         if plot:
-            ax1, ax2 = self.init_display()
+            self.init_display()
 
         index = np.zeros(sim.K)
         mean_array = np.zeros(sim.K)
@@ -332,18 +335,9 @@ class LILAEAgent(BanditAgent):
             mean_array[cur_sample] += sim.sim(index[cur_sample])
             sample_count[cur_sample] += 1
 
-            if plot:
-                counter += 1
-                if counter % 500 == 0:
-                    ax1.cla()
-                    ax2.cla()
-                    ax1.scatter(index, ucb, color='r')
-                    ax1.scatter(index, mean, color='b')
-                    ax1.scatter(index, lcb, color='c')
-                    ax2.scatter(index, sample_count, color='g')
-                    plt.yscale('log')
-                    plt.draw()
-                    time.sleep(0.001)
+            counter += 1
+            if plot and counter % 20 == 0:
+                self.draw(index, [ucb, mean, lcb], [sample_count])
 
         return index[0]
 
@@ -357,7 +351,7 @@ class LILLSAgent(LILAgent):
         delta = self.delta
 
         if plot:
-            ax1, ax2 = self.init_display()
+            self.init_display()
 
         mean_array = np.zeros(sim.K)
         sample_count = np.ones(sim.K) * 3
@@ -394,21 +388,10 @@ class LILLSAgent(LILAgent):
             if stop:
                 return best
 
-            if plot:
-                counter += 1
-                if counter % 50 == 0:
-                    ucb = mean_array / sample_count
-                    for j in range(0, sim.K):
-                        ucb[j] += self.boundary(sample_count[j], delta / sim.K)
+            counter += 1
+            if plot and counter % 20 == 0:
+                self.draw(range(0, sim.K), [explore_val, ucb, mean], [sample_count])
 
-                    ax1.cla()
-                    ax2.cla()
-                    ax1.scatter(range(0, sim.K), explore_val, color='r')
-                    ax1.scatter(range(0, sim.K), ucb, color='c')
-                    ax1.scatter(range(0, sim.K), mean, color='b')
-                    ax2.scatter(range(0, sim.K), sample_count, color='g')
-                    plt.draw()
-                    time.sleep(0.001)
 
 if __name__ == '__main__':
     sim = Simulator(20, kind='H0')
