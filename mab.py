@@ -9,14 +9,20 @@ import time
 from scipy.special import zeta
 from numpy.random import normal as nrand
 
+
 class Simulator:
-    def __init__(self, K, kind='H2', dist='bernoulli'):
-        self.K = K
+    """ This class simulates bandit with requested arm count, distribution, and mean. Also pulls to each arm is recorded
+    and can be plotted or returned if needed """
+
+    def __init__(self, nbr_arms, kind='H2', dist='bernoulli'):
+        self.K = nbr_arms
         self.nsamples = 0
         self.kind = kind
         self.sample_size = np.zeros(K)
         self.dist = dist
         self.mean_list = np.zeros(K)
+
+        # Compute the mean for each arm
         for arm in range(0, K):
             if self.kind == 'H0':
                 if arm == 0:
@@ -35,6 +41,7 @@ class Simulator:
                 self.mean_list[arm] = 0.5
 
     def sim(self, arm):
+        """ Draw a sample from given arm """
         self.nsamples += 1
         self.sample_size[arm] += 1
         if self.dist == 'bernoulli':
@@ -46,22 +53,27 @@ class Simulator:
             return nrand(self.mean_list[arm], 0.25)
 
     def hardness(self):
+        """ Return the H1 hardness of current configuration """
         hardness_sum = 0.0
         for arm in range(1, self.K):
             hardness_sum += 1.0 / ((self.mean_list[0] - self.mean_list[arm]) ** 2)
         return hardness_sum
 
     def finish(self):
+        """ Reset internal states and return number of samples requested so far """
         copy = self.nsamples
+        self.sample_size = np.zeros(self.K)
         self.nsamples = 0
         return copy
 
     def plot_samples(self):
+        """ Plot the samples requested for each arm """
         plt.clf()
         plt.scatter(range(0, self.K), self.sample_size)
         plt.yscale('log')
         plt.ioff()
         plt.show()
+
 
 class MABTestBench:
     def __init__(self, kind, size):
@@ -70,6 +82,8 @@ class MABTestBench:
         self.k_range = 7
 
     def test(self, agent):
+        """ Run the test on an agent and return the number of arms, average accuracy, average number of samples, and number
+    of samples top 10% of runs collected """
         narms_array = np.zeros(self.k_range)
         accuracy = np.zeros(self.k_range)
         average_sample = np.zeros(self.k_range)
@@ -98,6 +112,7 @@ class MABTestBench:
         return narms_array, accuracy, average_sample, majority_sample
 
     def test_and_plot(self, agent):
+        """ Run test on an agent and plot its performance """
         n_arms, accuracy, average_sample, majority_sample = self.test(agent)
         print(n_arms, accuracy, average_sample, majority_sample)
         fig = plt.figure()
@@ -122,13 +137,11 @@ class MABTestBench:
         return n_arms, accuracy, average_sample, majority_sample
 
     def compare_and_plot(self, agents, labels):
+        """ Compare a list of agents and plot their sample complexity """
         color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
         type_list = ['-', '--', '-.', ':']
         fig = plt.figure()
         ax1 = fig.add_subplot(111)
-        #ax2 = ax1.twinx()
-        #plt.hold(True)
-        #plt.title('Comparison of Required Sample Size')
 
         counter = 0
         lns = []
@@ -155,12 +168,20 @@ class MABTestBench:
         plt.legend(lns, labs, loc='upper right', fontsize=16)
         plt.show()
 
+
 class BanditAgent:
+    """ Base class for all mab agents """
+    
     def __init__(self):
         self.ax1 = None
         self.ax2 = None
 
+    def run(self, sim):
+        """ All agents must inherit this method """
+        return 0
+
     def init_display(self):
+        """ Call this if we want to graphical visualize the agent's behavior """
         plt.ion()
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
@@ -170,6 +191,8 @@ class BanditAgent:
         return ax1, ax2
 
     def draw(self, x_index, left_objects, right_objects):
+        """ Draw non-blocking on the left axis left_objects and right axis right_objects,
+        use x_index as x coordinates """
         color_list = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
         color_count = 0
         self.ax1.cla()
@@ -183,7 +206,10 @@ class BanditAgent:
         plt.draw()
         time.sleep(0.001)
 
+
 class LILAgent(BanditAgent):
+    """ Base class for all agents based on LIL bounds """
+    
     def __init__(self, confidence):
         BanditAgent.__init__(self)
         self.confidence = confidence
@@ -193,15 +219,19 @@ class LILAgent(BanditAgent):
         self.delta = delta
 
     def risk(self, delta, epsilon = 0.01):
+        """ return the risk the bound do not hold given delta """
         rou = 2 * (2.0 + epsilon) / epsilon * ((1 / math.log(1 + epsilon)) ** (1 + epsilon))
         return rou * delta
 
     def boundary(self, n, delta, epsilon=0.01):
+        """ Compute the LIL bound given n, delta """
         temp = np.log((np.log(1 + epsilon) + np.log(n)) / delta)
         return np.sqrt((1 + epsilon) * temp / 2 / n) * (1 + np.sqrt(epsilon))
 
 
 class LILUCBAgent(LILAgent):
+    """ Agent that uses LIL-UCB algorithm """
+
     def __init__(self, confidence):
         LILAgent.__init__(self, confidence)
 
@@ -238,6 +268,8 @@ class LILUCBAgent(LILAgent):
 
 
 class LILLUCBAgent(LILAgent):
+    """ Agent that uses LIL-LUCB algorithm """
+
     def __init__(self, confidence):
         LILAgent.__init__(self, confidence)
 
@@ -287,6 +319,8 @@ class LILLUCBAgent(LILAgent):
 
 
 class LILAEAgent(BanditAgent):
+    """ Agent that uses LIL-AE algorithm """
+
     def __init__(self, confidence):
         BanditAgent.__init__(self)
         self.a = 0.6
@@ -341,7 +375,10 @@ class LILAEAgent(BanditAgent):
 
         return index[0]
 
+
 class LILLSAgent(LILAgent):
+    """ Agent that uses LIL-UCB + LS """
+
     def __init__(self, confidence):
         LILAgent.__init__(self, confidence / 2)
 
@@ -394,18 +431,12 @@ class LILLSAgent(LILAgent):
 
 
 if __name__ == '__main__':
-    sim = Simulator(20, kind='H0')
     ae_agent = LILAEAgent(0.05)
-
     ucb_agent = LILUCBAgent(0.05)
-
     ls_agent = LILLSAgent(0.05)
-
     lucb_agent = LILLUCBAgent(0.05)
 
     test = MABTestBench(kind='H2', size=20)
-
-    #test.test_and_plot(ae_agent)
 
     agents = [ae_agent, ucb_agent, ls_agent, lucb_agent]
     labels = ['LIL-AE', 'LIL-UCB', 'LIL-UCB + LS', 'LIL-LUCB']
