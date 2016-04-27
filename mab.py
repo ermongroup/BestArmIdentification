@@ -79,7 +79,7 @@ class MABTestBench:
     def __init__(self, kind, size):
         self.kind = kind
         self.size = size
-        self.k_range = 10
+        self.k_range = 1
 
     def test(self, agent):
         """ Run the test on an agent and return the number of arms, average accuracy, average number of samples, and number
@@ -88,7 +88,7 @@ class MABTestBench:
         accuracy = np.zeros(self.k_range)
         average_sample = np.zeros(self.k_range)
         majority_sample = np.zeros(self.k_range)
-        K = 2
+        K = 1000
         for i in range(0, self.k_range):
             print("Testing on K=" + str(K))
             correct_count = 0
