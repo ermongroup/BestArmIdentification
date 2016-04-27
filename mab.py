@@ -320,7 +320,7 @@ class LILLUCBAgent(LILAgent):
                 self.draw(range(0, sim.K), [ucb, mean], [sample_count])
 
 
-class LILAEAgent(BanditAgent):
+class AHRAgent(BanditAgent):
     """ Agent that uses LIL-AE algorithm """
 
     def __init__(self, confidence, stop_interval=1):
@@ -554,12 +554,12 @@ class MedianAgent(BanditAgent):
 
 
 if __name__ == '__main__':
-    ae_agent = LILAEAgent(0.05)
+    ae_agent = AHRAgent(0.05)
     ucb_agent = LILUCBAgent(0.05)
     ls_agent = LILLSAgent(0.05)
     lucb_agent = LILLUCBAgent(0.05)
     median_agent = MedianAgent(0.05)
-    eae_agent = LILAEAgent(0.05, stop_interval=1.05)
+    eae_agent = AHRAgent(0.05, stop_interval=1.05)
     #test_sim = Simulator(20)
     #eae_agent.run(test_sim, plot=True)
     #median_agent.run(test_sim)
