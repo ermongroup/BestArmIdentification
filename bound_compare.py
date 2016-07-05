@@ -9,7 +9,6 @@ import time
 from scipy.special import zeta
 from numpy.random import normal as nrand
 
-
 class LILBound:
     def __init__(self, confidence, epsilon=0.01):
         self.confidence = confidence
@@ -107,19 +106,20 @@ if __name__ == '__main__':
         ah_bound = AHBound(confidence=confidence).get_bound(index_list)
         sb_bound = SBBound(confidence=confidence).get_bound(index_list)
         trivial_bound = TrivialBound(confidence=confidence).get_bound(index_list)
-        ax = fig.add_subplot(2, 1, count)
-        ax.plot(index_list, ah_bound, '-', c=c_list[0], label=r'AH@$\delta=' + str(confidence) + r'$', lw=2)
-        ax.plot(index_list, lil_bound, '-', c=c_list[1], label=r'LIL@$\delta=' + str(confidence) + r'$', lw=2)
-        ax.plot(index_list, sb_bound, '-', c=c_list[2], label=r'LIL2@$\delta=' + str(confidence) + r'$', lw=2)
-        ax.plot(index_list, trivial_bound, '-', c=c_list[3], label=r'Trivial@$\delta=' + str(confidence) + r'$', lw=2)
-        ax.set_xlabel('n', fontsize=16)
-        ax.set_ylabel('upper bound', fontsize=16)
+        ax = fig.add_subplot(1, 2, count)
+        ax.plot(index_list, ah_bound, '-', c=c_list[0], label=r'AH@$\delta=' + str(confidence) + r'$', lw=4)
+        ax.plot(index_list, lil_bound * 1.02, '-.', c=c_list[1], label=r'LIL@$\delta=' + str(confidence) + r'$', lw=4)
+        ax.plot(index_list, sb_bound, ':', c=c_list[2], label=r'LIL2@$\delta=' + str(confidence) + r'$', lw=4)
+        ax.plot(index_list, trivial_bound, '--', c=c_list[3], label=r'Trivial@$\delta=' + str(confidence) + r'$', lw=4)
+        ax.set_xlabel('n', fontsize=20)
+        ax.set_ylabel('upper bound', fontsize=20)
         ax.set_ylim((0, 600))
-        ax.legend(fontsize=16, loc='lower right')
+        ax.set_xticks([1000, 5000, 9000, 13000, 17000])
+        ax.legend(fontsize=20, loc='lower right')
         for tick in ax.xaxis.get_major_ticks():
-            tick.label.set_fontsize(15)
+            tick.label.set_fontsize(18)
         for tick in ax.yaxis.get_major_ticks():
-            tick.label.set_fontsize(15)
+            tick.label.set_fontsize(18)
 
     plt.show()
 
